@@ -72,19 +72,21 @@ def ensure_index_exists(pc: Pinecone):
 def upload_in_batches(chunks, embeddings, batch_size: int = 90):
     total = len(chunks)
     uploaded = 0
-    vectorstore = None
+
+    # Connect directly to the existing index - avoids from_documents()
+    # which calls list_indexes() internally with an old API that breaks on SDK v5+
+    vectorstore = PineconeVectorStore(
+        index_name=INDEX_NAME,
+        embedding=embeddings,
+        pinecone_api_key=PINECONE_API_KEY,
+    )
 
     for i in range(0, total, batch_size):
         batch = chunks[i:i + batch_size]
         batch_num = i // batch_size + 1
         print(f"⬆️  Uploading batch {batch_num}: chunks {i + 1}-{i + len(batch)} of {total}")
         try:
-            if vectorstore is None:
-                vectorstore = PineconeVectorStore.from_documents(
-                    documents=batch, index_name=INDEX_NAME, embedding=embeddings,
-                )
-            else:
-                vectorstore.add_documents(documents=batch)
+            vectorstore.add_documents(documents=batch)
             uploaded += len(batch)
             print(f"✅ Uploaded. Total: {uploaded}/{total}")
             time.sleep(2)
@@ -92,12 +94,7 @@ def upload_in_batches(chunks, embeddings, batch_size: int = 90):
             print(f"⚠️ Batch {batch_num} failed ({e}). Retrying once after 10s...")
             time.sleep(10)
             try:
-                if vectorstore is None:
-                    vectorstore = PineconeVectorStore.from_documents(
-                        documents=batch, index_name=INDEX_NAME, embedding=embeddings,
-                    )
-                else:
-                    vectorstore.add_documents(documents=batch)
+                vectorstore.add_documents(documents=batch)
                 uploaded += len(batch)
                 print(f"✅ Retry succeeded. Total: {uploaded}/{total}")
             except Exception as retry_error:
