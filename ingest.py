@@ -70,7 +70,7 @@ def ensure_index_exists(pc: "Pinecone"):
     time.sleep(60)
 
 
-def upload_in_batches(chunks, embeddings, batch_size: int = 100):
+def upload_in_batches(chunks, embeddings, batch_size: int = 90):
     total = len(chunks)
     uploaded = 0
     vectorstore = None
