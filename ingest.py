@@ -18,8 +18,7 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_pinecone import PineconeVectorStore, PineconeEmbeddings
-from pinecone.grpc import PineconeGRPC as Pinecone
-from pinecone import ServerlessSpec
+from pinecone import Pinecone, ServerlessSpec
 
 load_dotenv()
 
@@ -54,7 +53,7 @@ def split_documents(documents):
     return splitter.split_documents(documents)
 
 
-def ensure_index_exists(pc: "Pinecone"):
+def ensure_index_exists(pc: Pinecone):
     existing = [idx.name for idx in pc.list_indexes()]
     if INDEX_NAME in existing:
         print(f"✅ Index '{INDEX_NAME}' already exists, uploading into it.")
