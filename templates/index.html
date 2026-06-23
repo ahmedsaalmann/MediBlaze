@@ -538,36 +538,36 @@
 
         // Override the existing form submit to handle image uploads
         chatForm.addEventListener("submit", async function (e) {
+          if (!selectedImageFile) return; // no image: let original listener handle it
           e.preventDefault();
-          // If an image is selected, use the image endpoint instead
-          if (selectedImageFile) {
-            const userText = userMessage.value.trim();
-            const displayMsg = userText
-              ? `📷 [Image] ${userText}`
-              : "📷 [Uploaded a medical image for analysis]";
-            addMessage(displayMsg, true);
-            userMessage.value = "";
+          e.stopImmediatePropagation(); // prevent original listener from also firing
 
-            const previewSrc = imagePreview.src;
-            // Show image in chat
-            const imgMsgDiv = document.createElement("div");
-            imgMsgDiv.className = "message user-message";
-            imgMsgDiv.innerHTML = `<div class="message-bubble" style="background:#17a2b8;"><img src="${previewSrc}" style="max-width:200px;border-radius:8px;" /></div>`;
-            chatWindow.appendChild(imgMsgDiv);
-            clearImage();
-            scrollToBottom();
+          const fileToUpload = selectedImageFile; // capture before clearImage()
+          const userText = userMessage.value.trim();
+          const previewSrc = imagePreview.src;
 
-            const formData = new FormData();
-            formData.append("image", selectedImageFile || new Blob());
-            formData.append("message", userText);
+          // Show user text bubble
+          const displayMsg = userText
+            ? "📷 " + userText
+            : "📷 Uploaded a medical image for analysis";
+          addMessage(displayMsg, true);
+          userMessage.value = "";
 
-            // Re-select the file since clearImage reset selectedImageFile
-            // Re-build formData from the file directly before clearImage was called
-            // (we already appended it above)
-            await sendImageMessage(formData);
-            return;
-          }
-        }, true); // capture phase so it runs before the original listener
+          // Show image preview in chat
+          const imgMsgDiv = document.createElement("div");
+          imgMsgDiv.className = "message user-message";
+          imgMsgDiv.innerHTML = `<div class="message-bubble" style="background:#17a2b8;padding:6px;"><img src="${previewSrc}" style="max-width:200px;border-radius:8px;display:block;" /></div>`;
+          chatWindow.appendChild(imgMsgDiv);
+          scrollToBottom();
+
+          // Build formData BEFORE clearing (file ref still valid)
+          const formData = new FormData();
+          formData.append("image", fileToUpload);
+          formData.append("message", userText);
+
+          clearImage(); // clear UI after appending to formData
+          await sendImageMessage(formData);
+        }, true); // capture phase
 
         async function sendImageMessage(formData) {
           showToolIndicator("vision", "👁️ Analyzing your image...");

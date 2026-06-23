@@ -362,10 +362,11 @@ async def stream_chat_with_image(
     Step 1: Gemini Vision analyzes the image.
     Step 2: Analysis is fed into the Groq agent + RAG for a full medical response.
     """
-    allowed_types = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
-    if image.content_type not in allowed_types:
+    # Accept any image MIME type (Windows may report image/jpg, image/bmp, etc.)
+    mime = image.content_type or ""
+    if not mime.startswith("image/"):
         async def error_gen():
-            yield f"data: {json.dumps({'type': 'error', 'content': 'Unsupported file type. Please upload JPEG, PNG, or WebP.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'content': '⚠️ Please upload an image file (JPEG, PNG, WebP, etc.)'})}\n\n"
             yield f"data: {json.dumps({'type': 'end'})}\n\n"
         return StreamingResponse(error_gen(), media_type="text/event-stream")
 
