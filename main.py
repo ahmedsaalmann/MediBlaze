@@ -375,7 +375,8 @@ async def stream_chat_with_image(
             image_bytes = await image.read()
             user_question = message.strip()
 
-            yield f"data: {json.dumps({'type': 'tool_start', 'tool_name': 'vision', 'message': 'Analyzing your image...'})}\n\n"
+            # Step 1: Gemini Vision analyzes the image directly (faster - no Groq hop)
+            yield f"data: {json.dumps({'type': 'tool_start', 'tool_name': 'vision', 'message': '👁️ Analyzing your image...'})}\n\n"
 
             try:
                 vision_result = analyze_medical_image(
@@ -388,44 +389,22 @@ async def stream_chat_with_image(
                 yield f"data: {json.dumps({'type': 'end'})}\n\n"
                 return
 
-            yield f"data: {json.dumps({'type': 'tool_start', 'tool_name': 'rag_tool', 'message': 'Searching medical knowledge base...'})}\n\n"
-
-            combined_prompt = (
-                f"A patient has uploaded a medical image for analysis.\n\n"
-                f"**Image Analysis (from vision AI):**\n{vision_result}\n\n"
-                f"{'**Patient question:** ' + user_question if user_question else ''}\n\n"
-                "Based on the image analysis above, provide a comprehensive medical response. "
-                "Use your medical knowledge base to supplement with relevant information, "
-                "treatment options, and recommendations."
-            )
-
-            response = agent.invoke({"messages": [HumanMessage(content=combined_prompt)]})
             yield f"data: {json.dumps({'type': 'tool_end'})}\n\n"
 
-            if response and "messages" in response:
-                final_text = response["messages"][-1].content
-                yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+            # Step 2: Stream Gemini result directly (no extra Groq agent call)
+            yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
 
-                for line in final_text.split("\n"):
-                    chunk = line + "\n"
-                    if chunk.strip():
-                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
-                        await asyncio.sleep(0.05)
+            for line in vision_result.split("\n"):
+                chunk = line + "\n"
+                if chunk.strip():
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                    await asyncio.sleep(0.03)
 
-                tools_used = ["vision_analysis"]
-                for msg in response["messages"]:
-                    if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        for tc in msg.tool_calls:
-                            if tc["name"] not in tools_used:
-                                tools_used.append(tc["name"])
-
-                yield f"data: {json.dumps({'type': 'complete', 'tools_used': tools_used})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'error', 'content': 'Sorry, could not generate a response.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'tools_used': ['vision_analysis']})}\n\n"
 
         except Exception as e:
             logger.error(f"Image endpoint error: {str(e)}")
-            yield f"data: {json.dumps({'type': 'error', 'content': 'Sorry, there was an error processing your image.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'content': f'Sorry, there was an error: {str(e)}'})}\n\n"
         finally:
             yield f"data: {json.dumps({'type': 'end'})}\n\n"
 
