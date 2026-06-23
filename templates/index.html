@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MediBlaze AI</title>
-    <!-- Favicon -->
     <link rel="icon" type="image/png" href="/static/logo.png" />
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css"
@@ -15,18 +14,15 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/static/styles.css" />
-    <!-- Add syntax highlighting for code blocks -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
     />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <!-- Add marked.js for markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
   </head>
   <body>
     <div class="container-fluid h-100 d-flex flex-column app-container">
-      <!-- Navbar -->
       <nav class="navbar navbar-expand-lg">
         <div class="container-fluid">
           <a class="navbar-brand" href="#">
@@ -43,13 +39,10 @@
         </div>
       </nav>
 
-      <!-- Main Content -->
       <div class="container-fluid">
         <div class="row justify-content-center">
           <div class="chat-main-container">
-            <!-- Chat Messages Area -->
             <div class="chat-window" id="chatWindow">
-              <!-- Welcome message -->
               <div class="message bot-message">
                 <div class="message-avatar">
                   <img
@@ -78,7 +71,14 @@
         </div>
       </div>
 
-      <!-- Chat Input - Fixed at bottom -->
+      <!-- Image Preview Bar -->
+      <div id="imagePreviewBar" style="display:none;position:fixed;bottom:80px;left:0;right:0;background:#fff;border-top:1px solid #e2e8f0;padding:8px 16px;z-index:999;">
+        <div style="max-width:820px;margin:0 auto;display:flex;align-items:center;gap:10px;">
+          <img id="imagePreview" src="" style="height:60px;border-radius:8px;border:2px solid #17a2b8;object-fit:cover;" />
+          <span id="imageFileName" style="font-size:0.85rem;color:#6b7280;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+          <button onclick="clearImage()" style="background:none;border:none;color:#e53e3e;font-size:1.2rem;cursor:pointer;" title="إزالة الصورة">✕</button>
+        </div>
+      </div>
       <div class="chat-input-container">
         <div class="chat-input-wrapper">
           <form id="chatForm" class="d-flex gap-2">
@@ -93,6 +93,13 @@
               spellcheck="false"
               required
             />
+            <button type="button" id="voiceBtn" class="btn btn-secondary text-white" style="background-color: #6c757d; border: none;" title="تحدث بصوتك">
+              <i class="fas fa-microphone" id="micIcon"></i>
+            </button>
+            <label for="imageUpload" class="btn btn-secondary chat-img-btn" title="رفع صورة طبية" style="margin:0;cursor:pointer;background:#17a2b8;border:none;border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas fa-image" style="color:white;"></i>
+              </label>
+              <input type="file" id="imageUpload" accept="image/*" style="display:none;">
             <button type="submit" class="btn btn-primary chat-send-btn">
               <i class="fas fa-paper-plane"></i>
             </button>
@@ -113,6 +120,65 @@
         const chatForm = document.getElementById("chatForm");
         const userMessage = document.getElementById("userMessage");
         const chatWindow = document.getElementById("chatWindow");
+        const voiceBtn = document.getElementById("voiceBtn");
+        const micIcon = document.getElementById("micIcon");
+
+        // دالة نطق رد البوت المسموع باللغة العربية
+        function speakText(text) {
+          // إلغاء أي صوت يعمل حالياً لتجنب التداخل
+          window.speechSynthesis.cancel();
+          
+          // تنظيف النص من علامات الـ Markdown لكي يقرأه المتصفح بشكل صحيح
+          const cleanText = text.replace(/[*#_\`\[\]\(\)]/g, '').replace(/- /g, '');
+          
+          const utterance = new SpeechSynthesisUtterance(cleanText);
+          utterance.lang = 'ar-EG'; // لغة النطق العربية
+          utterance.rate = 1.0;     // سرعة القراءة الافتراضية
+          window.speechSynthesis.speak(utterance);
+        }
+
+        // إعدادات التعرف على صوت المستخدم وتحويله لنص
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          const recognition = new SpeechRecognition();
+          recognition.lang = 'ar-EG'; // ضبط المايك للاستماع للغة العربية
+          recognition.continuous = false;
+          recognition.interimResults = false;
+
+          voiceBtn.addEventListener("click", function() {
+            // تشغيل أو إيقاف الاستماع عند الضغط على الزر
+            if (micIcon.classList.contains("fa-microphone")) {
+              try {
+                window.speechSynthesis.cancel(); // إيقاف صوت البوت لو كان يتحدث
+                recognition.start();
+                micIcon.className = "fas fa-stop text-danger animate-pulse";
+                voiceBtn.title = "إيقاف الاستماع";
+              } catch (e) {
+                console.error(e);
+              }
+            } else {
+              recognition.stop();
+            }
+          });
+
+          recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            userMessage.value = transcript; // وضع الكلام داخل حقل الإدخال
+          };
+
+          recognition.onend = function() {
+            micIcon.className = "fas fa-microphone";
+            voiceBtn.title = "تحدث بصوتك";
+          };
+
+          recognition.onerror = function() {
+            micIcon.className = "fas fa-microphone";
+            voiceBtn.title = "تحدث بصوتك";
+          };
+        } else {
+          // إخفاء الزر إذا كان المتصفح قديماً ولا يدعم الصوت
+          voiceBtn.style.display = "none";
+        }
 
         // Function to get current time
         function getCurrentTime() {
@@ -147,13 +213,9 @@
         function renderMarkdown(content) {
           if (!content) return "";
 
-          console.log("Rendering markdown content:", content);
-
-          // Remove code fences if present (common issue from LLM responses)
+          // Remove code fences if present
           content = content.replace(/^```\s*\n?/, "").replace(/\n?```\s*$/, "");
-          console.log("Content after removing code fences:", content);
 
-          // If marked.js is available, use it
           if (typeof marked !== "undefined") {
             try {
               marked.setOptions({
@@ -161,35 +223,21 @@
                 gfm: true,
                 sanitize: false,
               });
-              const result = marked.parse(content);
-              console.log("Marked.js result:", result);
-              return result;
+              return marked.parse(content);
             } catch (e) {
               console.error("Marked.js error:", e);
-              console.log("Falling back to manual parsing");
             }
-          } else {
-            console.log("Marked.js not available, using fallback");
-          } // Fallback manual parsing
-          let html = content.trim();
-          console.log("Using fallback parsing for:", html);
+          }
 
-          // Handle headers (must be at start of line)
+          let html = content.trim();
           html = html.replace(/^### (.*$)/gim, "<h3>$1</h3>");
           html = html.replace(/^## (.*$)/gim, "<h2>$1</h2>");
           html = html.replace(/^# (.*$)/gim, "<h1>$1</h1>");
-
-          // Handle bold and italic
           html = html.replace(/\*\*(.*?)\*\*/gim, "<strong>$1</strong>");
           html = html.replace(/\*(.*?)\*/gim, "<em>$1</em>");
-
-          // Handle blockquotes (must be at start of line)
           html = html.replace(/^>\s+(.*$)/gim, "<blockquote>$1</blockquote>");
-
-          // Handle horizontal rules
           html = html.replace(/^---+$/gim, "<hr>");
 
-          // Handle lists
           const lines = html.split("\n");
           let inList = false;
           let processedLines = [];
@@ -207,12 +255,11 @@
               processedLines.push(`<li>${listContent}</li>`);
             } else {
               if (inList && trimmedLine === "") {
-                continue; // Skip empty lines in lists
+                continue;
               } else if (inList && !trimmedLine.match(/^[-*+]\s+/)) {
                 processedLines.push("</ul>");
                 inList = false;
               }
-
               if (trimmedLine !== "") {
                 processedLines.push(trimmedLine);
               } else {
@@ -221,39 +268,22 @@
             }
           }
 
-          if (inList) {
-            processedLines.push("</ul>");
-          }
-
+          if (inList) processedLines.push("</ul>");
           html = processedLines.join("\n");
-
-          // Convert line breaks to <br> but preserve existing HTML structure
           html = html.replace(/\n(?![<])/g, "<br>");
 
-          // Wrap paragraphs (only if not already HTML)
-          if (
-            !html.includes("<h") &&
-            !html.includes("<ul>") &&
-            !html.includes("<blockquote>") &&
-            !html.includes("<hr>")
-          ) {
+          if (!html.includes("<h") && !html.includes("<ul>") && !html.includes("<blockquote>") && !html.includes("<hr>")) {
             html = "<p>" + html + "</p>";
           }
-
-          console.log("Fallback parsing result:", html);
           return html;
         }
 
         // Function to add message to chat
         function addMessage(message, isUser) {
           const messageDiv = document.createElement("div");
-          messageDiv.className = `message ${
-            isUser ? "user-message" : "bot-message"
-          }`;
+          messageDiv.className = `message ${isUser ? "user-message" : "bot-message"}`;
 
-          const processedMessage = isUser
-            ? escapeHtml(message)
-            : renderMarkdown(message);
+          const processedMessage = isUser ? escapeHtml(message) : renderMarkdown(message);
 
           if (isUser) {
             messageDiv.innerHTML = `
@@ -279,7 +309,6 @@
           scrollToBottom();
         }
 
-        // Function to escape HTML
         function escapeHtml(unsafe) {
           return unsafe
             .replace(/&/g, "&amp;")
@@ -289,7 +318,6 @@
             .replace(/'/g, "&#039;");
         }
 
-        // Function to show typing indicator
         function showTypingIndicator() {
           const indicator = document.createElement("div");
           indicator.className = "message bot-message typing-indicator";
@@ -311,19 +339,15 @@
           scrollToBottom();
         }
 
-        // Function to remove typing indicator
         function removeTypingIndicator() {
           const indicator = document.getElementById("typingIndicator");
-          if (indicator) {
-            indicator.remove();
-          }
-        } // Function to show tool usage indicator
+          if (indicator) indicator.remove();
+        }
+
         function showToolIndicator(toolName, message) {
           const indicator = document.createElement("div");
           indicator.className = "message bot-message tool-indicator";
           indicator.id = "toolIndicator";
-
-          // Use the message from backend if provided, otherwise use defaults
           let toolMessage = message || "🤔 Thinking...";
 
           indicator.innerHTML = `
@@ -346,21 +370,17 @@
           scrollToBottom();
         }
 
-        // Function to remove tool indicator
         function removeToolIndicator() {
           const indicator = document.getElementById("toolIndicator");
-          if (indicator) {
-            indicator.remove();
-          }
+          if (indicator) indicator.remove();
         }
 
-        // Handle form submission with streaming
         chatForm.addEventListener("submit", function (e) {
           e.preventDefault();
-
           const message = userMessage.value.trim();
           if (!message) return;
 
+          window.speechSynthesis.cancel(); // إيقاف أي صوت شغال عند إرسال سؤال جديد
           addMessage(message, true);
           userMessage.value = "";
           showTypingIndicator();
@@ -369,7 +389,6 @@
           handleStreamingResponse(message);
         });
 
-        // Function to handle streaming response
         function handleStreamingResponse(message) {
           let currentBotMessage = null;
           let accumulatedContent = "";
@@ -385,10 +404,7 @@
             }),
           })
             .then((response) => {
-              if (!response.ok) {
-                throw new Error("Network response was not ok");
-              }
-
+              if (!response.ok) throw new Error("Network response was not ok");
               const reader = response.body.getReader();
               const decoder = new TextDecoder();
 
@@ -413,21 +429,16 @@
                       }
                     }
                   }
-
                   readStream();
                 });
               }
-
               readStream();
             })
             .catch((error) => {
               console.error("Streaming error:", error);
               removeTypingIndicator();
               removeToolIndicator();
-              addMessage(
-                "Sorry, there was an error processing your request. Please try again.",
-                false
-              );
+              addMessage("Sorry, there was an error processing your request. Please try again.", false);
               userMessage.disabled = false;
               userMessage.focus();
             });
@@ -436,16 +447,13 @@
             switch (data.type) {
               case "start":
                 break;
-
               case "tool_start":
                 removeTypingIndicator();
                 showToolIndicator(data.tool_name, data.message);
                 break;
-
               case "tool_end":
                 removeToolIndicator();
                 break;
-
               case "response_start":
                 removeTypingIndicator();
                 removeToolIndicator();
@@ -467,35 +475,27 @@
               case "content":
                 if (currentBotMessage && data.content) {
                   accumulatedContent += data.content + "\n";
-                  const contentElement =
-                    currentBotMessage.querySelector(".streaming-content");
+                  const contentElement = currentBotMessage.querySelector(".streaming-content");
                   if (contentElement) {
-                    const renderedContent = renderMarkdown(
-                      accumulatedContent.trim()
-                    );
-                    contentElement.innerHTML = renderedContent;
+                    contentElement.innerHTML = renderMarkdown(accumulatedContent.trim());
                     scrollToBottom();
                   }
                 }
                 break;
-
               case "complete":
                 if (currentBotMessage) {
-                  const contentElement =
-                    currentBotMessage.querySelector(".streaming-content");
+                  const contentElement = currentBotMessage.querySelector(".streaming-content");
                   if (contentElement) {
-                    const finalRenderedContent = renderMarkdown(
-                      accumulatedContent.trim()
-                    );
-                    contentElement.innerHTML = finalRenderedContent;
+                    contentElement.innerHTML = renderMarkdown(accumulatedContent.trim());
                     contentElement.classList.remove("streaming-content");
                     scrollToBottom();
                   }
+                  // تم استدعاء دالة الصوت هنا بمجرد اكتمال النص بالكامل
+                  speakText(accumulatedContent.trim());
                 }
                 userMessage.disabled = false;
                 userMessage.focus();
                 break;
-
               case "error":
                 removeTypingIndicator();
                 removeToolIndicator();
@@ -506,9 +506,137 @@
             }
           }
         }
-
-        // Focus on input field when page loads
         userMessage.focus();
+
+        // ── Image Upload Logic ─────────────────────────────────────────────
+        let selectedImageFile = null;
+
+        const imageUploadInput = document.getElementById("imageUpload");
+        const imagePreviewBar = document.getElementById("imagePreviewBar");
+        const imagePreview = document.getElementById("imagePreview");
+        const imageFileName = document.getElementById("imageFileName");
+
+        imageUploadInput.addEventListener("change", function () {
+          const file = this.files[0];
+          if (!file) return;
+          selectedImageFile = file;
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            imagePreview.src = e.target.result;
+            imageFileName.textContent = file.name;
+            imagePreviewBar.style.display = "block";
+          };
+          reader.readAsDataURL(file);
+        });
+
+        function clearImage() {
+          selectedImageFile = null;
+          imageUploadInput.value = "";
+          imagePreviewBar.style.display = "none";
+          imagePreview.src = "";
+        }
+
+        // Override the existing form submit to handle image uploads
+        chatForm.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          // If an image is selected, use the image endpoint instead
+          if (selectedImageFile) {
+            const userText = userMessage.value.trim();
+            const displayMsg = userText
+              ? `📷 [Image] ${userText}`
+              : "📷 [Uploaded a medical image for analysis]";
+            addMessage(displayMsg, true);
+            userMessage.value = "";
+
+            const previewSrc = imagePreview.src;
+            // Show image in chat
+            const imgMsgDiv = document.createElement("div");
+            imgMsgDiv.className = "message user-message";
+            imgMsgDiv.innerHTML = `<div class="message-bubble" style="background:#17a2b8;"><img src="${previewSrc}" style="max-width:200px;border-radius:8px;" /></div>`;
+            chatWindow.appendChild(imgMsgDiv);
+            clearImage();
+            scrollToBottom();
+
+            const formData = new FormData();
+            formData.append("image", selectedImageFile || new Blob());
+            formData.append("message", userText);
+
+            // Re-select the file since clearImage reset selectedImageFile
+            // Re-build formData from the file directly before clearImage was called
+            // (we already appended it above)
+            await sendImageMessage(formData);
+            return;
+          }
+        }, true); // capture phase so it runs before the original listener
+
+        async function sendImageMessage(formData) {
+          showToolIndicator("vision", "👁️ Analyzing your image...");
+          scrollToBottom();
+
+          let currentBotMessage = null;
+          let accumulatedContent = "";
+
+          try {
+            const response = await fetch("/chat/image/stream", {
+              method: "POST",
+              body: formData,
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              const chunk = decoder.decode(value, { stream: true });
+              const lines = chunk.split("\n");
+
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  const data = JSON.parse(line.slice(6));
+
+                  if (data.type === "tool_start") {
+                    removeTypingIndicator();
+                    showToolIndicator(data.tool_name, data.message);
+                  } else if (data.type === "tool_end") {
+                    removeTypingIndicator();
+                  } else if (data.type === "response_start") {
+                    removeTypingIndicator();
+                    currentBotMessage = document.createElement("div");
+                    currentBotMessage.className = "message bot-message";
+                    currentBotMessage.innerHTML = `
+                      <div class="message-avatar"><img src="/static/doctor-avatar.png" onerror="this.style.display='none'" /></div>
+                      <div class="message-bubble">
+                        <div class="message-content streaming-content"></div>
+                        <div class="message-time">${getCurrentTime()}</div>
+                      </div>`;
+                    chatWindow.appendChild(currentBotMessage);
+                    scrollToBottom();
+                  } else if (data.type === "content" && currentBotMessage) {
+                    accumulatedContent += data.content;
+                    const el = currentBotMessage.querySelector(".streaming-content");
+                    if (el) el.innerHTML = renderMarkdown(accumulatedContent);
+                    scrollToBottom();
+                  } else if (data.type === "complete" && currentBotMessage) {
+                    const el = currentBotMessage.querySelector(".streaming-content");
+                    if (el) {
+                      el.innerHTML = renderMarkdown(accumulatedContent);
+                      el.classList.remove("streaming-content");
+                    }
+                  } else if (data.type === "error") {
+                    removeTypingIndicator();
+                    addMessage(data.content || "Sorry, there was an error.", false);
+                  }
+                } catch (parseErr) { /* skip malformed lines */ }
+              }
+            }
+          } catch (err) {
+            removeTypingIndicator();
+            addMessage("Sorry, there was a connection error. Please try again.", false);
+          }
+        }
       });
     </script>
   </body>

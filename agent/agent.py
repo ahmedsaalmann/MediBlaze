@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END, MessagesState
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq  # تم التعديل هنا لاستيراد Groq بدلاً من Gemini
 from dotenv import load_dotenv
 import os
 import logging
@@ -13,13 +13,13 @@ load_dotenv()
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# LLM Setup for MediBlaze
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash-lite",
-    api_key=GOOGLE_API_KEY,
+# LLM Setup for MediBlaze using Groq
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # قراءة مفتاح جروك من ملف الـ .env
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",  # موديل قوي جداً وسريع ومتوافق مع الـ Tools والـ RAG
+    api_key=GROQ_API_KEY,
     temperature=0.3,  # Lower temperature for more consistent medical responses
-    max_output_tokens=1200,  # Increased for comprehensive medical responses with formatting
+    max_tokens=1200,  # تم تعديلها لـ max_tokens لأن مكتبة Groq تستخدم هذا الاسم
 )
 
 # MediBlaze Medical Tools

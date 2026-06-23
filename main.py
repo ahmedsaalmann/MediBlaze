@@ -3,12 +3,12 @@
 Advanced Medical AI Assistant with RAG and Web Search
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Any, AsyncGenerator
+from typing import List, Dict, Any, AsyncGenerator, Optional
 import logging
 import os
 from pathlib import Path
@@ -19,6 +19,7 @@ import asyncio
 
 from langchain_core.messages import HumanMessage
 from agent.agent import agent
+from agent.utils.vision import analyze_medical_image
 
 # Configure logging
 logging.basicConfig(level=logging.WARNING)
@@ -349,6 +350,94 @@ async def stream_chat_with_mediblaze(message: ChatMessage):
             "Content-Type": "text/event-stream",
         }
     )
+
+
+@app.post("/chat/image/stream")
+async def stream_chat_with_image(
+    image: UploadFile = File(...),
+    message: str = Form(default=""),
+):
+    """
+    Image analysis endpoint.
+    Step 1: Gemini Vision analyzes the image.
+    Step 2: Analysis is fed into the Groq agent + RAG for a full medical response.
+    """
+    allowed_types = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+    if image.content_type not in allowed_types:
+        async def error_gen():
+            yield f"data: {json.dumps({'type': 'error', 'content': 'Unsupported file type. Please upload JPEG, PNG, or WebP.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+        return StreamingResponse(error_gen(), media_type="text/event-stream")
+
+    async def generate_response() -> AsyncGenerator[str, None]:
+        try:
+            image_bytes = await image.read()
+            user_question = message.strip()
+
+            yield f"data: {json.dumps({'type': 'tool_start', 'tool_name': 'vision', 'message': 'Analyzing your image...'})}\n\n"
+
+            try:
+                vision_result = analyze_medical_image(
+                    image_bytes=image_bytes,
+                    mime_type=image.content_type,
+                    user_question=user_question,
+                )
+            except Exception as vision_err:
+                yield f"data: {json.dumps({'type': 'error', 'content': f'Could not analyze image: {str(vision_err)}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'end'})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'type': 'tool_start', 'tool_name': 'rag_tool', 'message': 'Searching medical knowledge base...'})}\n\n"
+
+            combined_prompt = (
+                f"A patient has uploaded a medical image for analysis.\n\n"
+                f"**Image Analysis (from vision AI):**\n{vision_result}\n\n"
+                f"{'**Patient question:** ' + user_question if user_question else ''}\n\n"
+                "Based on the image analysis above, provide a comprehensive medical response. "
+                "Use your medical knowledge base to supplement with relevant information, "
+                "treatment options, and recommendations."
+            )
+
+            response = agent.invoke({"messages": [HumanMessage(content=combined_prompt)]})
+            yield f"data: {json.dumps({'type': 'tool_end'})}\n\n"
+
+            if response and "messages" in response:
+                final_text = response["messages"][-1].content
+                yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+
+                for line in final_text.split("\n"):
+                    chunk = line + "\n"
+                    if chunk.strip():
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                        await asyncio.sleep(0.05)
+
+                tools_used = ["vision_analysis"]
+                for msg in response["messages"]:
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            if tc["name"] not in tools_used:
+                                tools_used.append(tc["name"])
+
+                yield f"data: {json.dumps({'type': 'complete', 'tools_used': tools_used})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Sorry, could not generate a response.'})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Image endpoint error: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'content': 'Sorry, there was an error processing your image.'})}\n\n"
+        finally:
+            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+
+    return StreamingResponse(
+        generate_response(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+        },
+    )
+
 
 @app.get("/conversation/{session_id}")
 async def get_conversation_history(session_id: str = "default_session"):
