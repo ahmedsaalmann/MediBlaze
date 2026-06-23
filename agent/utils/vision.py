@@ -35,7 +35,7 @@ def analyze_medical_image(image_bytes: bytes, mime_type: str, user_question: str
         A structured medical analysis as a string.
     """
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash-lite")
 
         prompt = (
             "You are MediBlaze 🏥, an advanced AI medical assistant with expert-level "
